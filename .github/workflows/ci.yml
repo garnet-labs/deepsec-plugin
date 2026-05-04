@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build, type-check, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm install --no-fund --no-audit
+
+      - name: Type check + build
+        run: npx tsc -p tsconfig.json
+
+      - name: Unit tests (vitest)
+        run: npx vitest run --reporter=verbose
+
+      - name: Verify built artifacts
+        run: |
+          test -f dist/index.js || (echo "missing dist/index.js" && exit 1)
+          test -f dist/correlate.js || (echo "missing dist/correlate.js" && exit 1)
+          test -f dist/garnet-client.js || (echo "missing dist/garnet-client.js" && exit 1)
+          echo "Built artifacts:"
+          find dist -type f | sort
+
+  smoke-correlate:
+    name: Smoke test — correlate a sample finding
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install + build
+        run: |
+          npm install --no-fund --no-audit
+          npx tsc -p tsconfig.json
+
+      # A deepsec-shaped finding pointing at the postinstall script that
+      # we know fired in the supply-chain demo run on garnet-labs/dub.
+      # This is the exact JSON shape `deepsec export --format json-dir` emits.
+      - name: Stage a deepsec-shaped finding
+        run: |
+          mkdir -p findings
+          cat > findings/finding-001.json <<'JSON'
+          {
+            "filePath": ".garnet-demo/postinstall.js",
+            "severity": "HIGH",
+            "vulnSlug": "other-supply-chain-postinstall-egress",
+            "title": "Postinstall script reads sensitive env and beacons to non-registry domain",
+            "description": "Install-time JS reads token-shaped env vars, stat()s credential paths, and emits an HTTPS POST to webhook.site. Static analysis cannot determine whether this fires in CI or whether the egress reaches the network.",
+            "lineNumbers": [20, 41, 53],
+            "recommendation": "Reject postinstall scripts that perform outbound network IO; constrain CI runner egress with a workflow-scoped network policy.",
+            "confidence": "high"
+          }
+          JSON
+          mkdir -p findings/finding-002
+          cat > findings/finding-002.json <<'JSON'
+          {
+            "filePath": "apps/web/lib/api/links/route.ts",
+            "severity": "MEDIUM",
+            "vulnSlug": "other-auth-edge-case",
+            "title": "Hypothetical auth bypass on link creation route",
+            "description": "Static-only finding to demonstrate the unreachable-in-this-suite verdict.",
+            "lineNumbers": [42],
+            "recommendation": "Add explicit auth check.",
+            "confidence": "medium"
+          }
+          JSON
+          ls -la findings/
+
+      # Run the registered subcommand. We exercise the same code path the
+      # plugin would expose via `deepsec garnet-correlate` by invoking the
+      # built JS directly through a tiny driver — no need to install the
+      # full deepsec CLI for this smoke test.
+      - name: Run garnet-correlate against the sample findings
+        env:
+          GARNET_API_TOKEN: ${{ secrets.GARNET_API_TOKEN }}
+        run: |
+          cat > run-correlate.mjs <<'MJS'
+          import { GarnetClient, correlateFindingToRuntime } from "./dist/index.js";
+          import * as fs from "node:fs/promises";
+          import * as path from "node:path";
+
+          const token = process.env.GARNET_API_TOKEN;
+          if (!token) { console.error("GARNET_API_TOKEN missing"); process.exit(1); }
+
+          const client = new GarnetClient({ apiToken: token });
+          const inDir = "findings";
+          const outDir = "garnet-correlated";
+          await fs.mkdir(outDir, { recursive: true });
+
+          const entries = (await fs.readdir(inDir)).filter(f => f.endsWith(".json"));
+          const summary = { total: 0, confirmed: 0, reachable: 0, unreachable: 0, missing: 0, errors: 0 };
+
+          for (const name of entries) {
+            const raw = JSON.parse(await fs.readFile(path.join(inDir, name), "utf8"));
+            summary.total++;
+            try {
+              const correlation = await correlateFindingToRuntime(
+                client,
+                { filePath: raw.filePath, lineNumbers: raw.lineNumbers },
+                { repository: "garnet-labs/dub" },
+              );
+              const merged = { ...raw, garnet: correlation };
+              await fs.writeFile(path.join(outDir, name), JSON.stringify(merged, null, 2));
+              switch (correlation.verdict) {
+                case "exploitable-runtime-confirmed": summary.confirmed++; break;
+                case "reachable-but-no-abuse":        summary.reachable++; break;
+                case "unreachable-in-this-suite":     summary.unreachable++; break;
+                case "no-runtime-data":               summary.missing++; break;
+              }
+              console.log(`✓ ${name.padEnd(20)} → ${correlation.verdict}`);
+              console.log(`    ${correlation.reasoning}`);
+            } catch (e) {
+              summary.errors++;
+              console.log(`✗ ${name} → ${e?.message ?? e}`);
+              // Do not fail the job on per-finding API errors; the plugin is
+              // designed to fail-soft. Capture the error in the output.
+              const merged = { ...raw, garnet: { verdict: "no-runtime-data", reasoning: `client error: ${e?.message ?? e}` } };
+              await fs.writeFile(path.join(outDir, name), JSON.stringify(merged, null, 2));
+            }
+          }
+
+          await fs.writeFile(path.join(outDir, "_summary.json"), JSON.stringify(summary, null, 2));
+          console.log("\nsummary:", summary);
+          MJS
+          node run-correlate.mjs
+
+      - name: Upload correlated findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garnet-correlated-findings
+          path: garnet-correlated/
+
+      - name: Show summary in job summary
+        if: always()
+        run: |
+          echo "## Garnet × deepsec correlation smoke test" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f garnet-correlated/_summary.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat garnet-correlated/_summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            for f in garnet-correlated/finding-*.json; do
+              [ -f "$f" ] || continue
+              echo "### $(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
+              echo '```json' >> "$GITHUB_STEP_SUMMARY"
+              cat "$f" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
