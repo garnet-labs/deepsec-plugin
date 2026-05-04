@@ -1,0 +1,29 @@
+{
+  "name": "@garnet-org/deepsec-plugin",
+  "version": "0.1.0",
+  "description": "Garnet runtime evidence plugin for Vercel deepsec — correlates static findings to eBPF-captured CI runtime behavior",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "deepsec": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "deepsec": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  },
+  "keywords": ["deepsec", "deepsec-plugin", "garnet", "runtime-security", "ebpf", "ci-security"]
+}
