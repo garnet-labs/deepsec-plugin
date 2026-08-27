@@ -34,6 +34,15 @@ This repo includes an integration-style test that proves the PR notifier emits G
     - `/v1/runs/{runId}/flows?path=...`
     - `/v1/runs/{runId}/detections?path=...`
 
+It also includes an execution-path test for the CLI correlation command:
+
+- Test file: [`src/__tests__/correlate-cmd.test.ts`](src/__tests__/correlate-cmd.test.ts)
+- What it verifies:
+  - runs `garnet-correlate` command handler over exported finding JSON
+  - writes enriched output JSON with `garnet.verdict`
+  - writes `_summary.json` with verdict counts
+  - calls the same Garnet API endpoints during correlation
+
 ## Install
 
 ```bash
