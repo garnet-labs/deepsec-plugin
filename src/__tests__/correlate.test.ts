@@ -1,108 +1,116 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { correlateFindingToRuntime } from "../correlate.js";
 import { GarnetClient } from "../garnet-client.js";
 
-// Build a fake fetch that serves canned Garnet API responses.
 function fakeFetch(routes: Record<string, unknown>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
-    const path = new URL(url).pathname + new URL(url).search;
-    const body = routes[path];
-    if (body === undefined) {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    const url = new URL(typeof input === "string" ? input : input.toString());
+    const key = url.pathname + url.search;
+    const body = routes[key];
+    if (body instanceof Error) throw body;
+    if (body === undefined) return new Response("not found", { status: 404 });
+    return Response.json(body);
   }) as typeof fetch;
 }
 
 describe("correlateFindingToRuntime", () => {
-  it("returns no-runtime-data when no runs exist", async () => {
+  it("fails closed when no profiles exist", async () => {
     const client = new GarnetClient({
-      apiToken: "t",
+      apiToken: "test",
       fetchImpl: fakeFetch({
-        "/v1/runs?repository=garnet-labs%2Fdub&limit=5": [],
+        "/v1/runs?repository=garnet-labs%2Fdeepsec-plugin&limit=5": [],
       }),
     });
-    const c = await correlateFindingToRuntime(
+    const result = await correlateFindingToRuntime(
       client,
-      { filePath: "apps/web/lib/auth.ts" },
-      { repository: "garnet-labs/dub" },
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin" },
     );
-    expect(c.verdict).toBe("no-runtime-data");
+    expect(result.status).toBe("unable-to-verify");
+    expect(result.captureStatus).toBe("none");
   });
 
-  it("returns unreachable when path has zero events", async () => {
-    const client = new GarnetClient({
-      apiToken: "t",
-      fetchImpl: fakeFetch({
-        "/v1/runs?repository=garnet-labs%2Fdub&limit=5": [
-          { runId: "r1", workflowName: "Playwright E2E Tests", startedAt: "2026-05-04T22:52:26Z" },
-        ],
-        "/v1/runs/r1/events?path=apps%2Fweb%2Flib%2Fauth.ts": [],
-        "/v1/runs/r1/flows?path=apps%2Fweb%2Flib%2Fauth.ts": [],
-        "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts": [],
-      }),
-    });
-    const c = await correlateFindingToRuntime(
-      client,
-      { filePath: "apps/web/lib/auth.ts" },
-      { repository: "garnet-labs/dub" },
+  it("does not turn absence into an unreachable or clean claim", async () => {
+    const routes = profileRoutes({ events: [], flows: [], detections: [] });
+    const result = await correlateFindingToRuntime(
+      new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin" },
     );
-    expect(c.verdict).toBe("unreachable-in-this-suite");
-    expect(c.pathExecuted).toBe(false);
+    expect(result.status).toBe("not-observed");
+    expect(result.reasoning).toContain("does not prove");
   });
 
-  it("returns reachable-but-no-abuse when events exist but no detections/denials", async () => {
-    const client = new GarnetClient({
-      apiToken: "t",
-      fetchImpl: fakeFetch({
-        "/v1/runs?repository=garnet-labs%2Fdub&limit=5": [
-          { runId: "r1", workflowName: "Playwright E2E Tests", startedAt: "2026-05-04T22:52:26Z" },
-        ],
-        "/v1/runs/r1/events?path=apps%2Fweb%2Flib%2Fauth.ts": [
-          { kind: "process.spawn", ts: "x", pid: 1, ppid: 0, comm: "node", path: "apps/web/lib/auth.ts" },
-        ],
-        "/v1/runs/r1/flows?path=apps%2Fweb%2Flib%2Fauth.ts": [
-          { flowId: "f1", pid: 1, comm: "node", destAddr: "1.2.3.4", destPort: 443, destDomain: "registry.npmjs.org", bytesOut: 100, bytesIn: 200, startedAt: "x", policyDecision: "allow" },
-        ],
-        "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts": [],
-      }),
+  it("reports observations without claiming exploitability", async () => {
+    const routes = profileRoutes({
+      events: [
+        {
+          kind: "process.spawn",
+          ts: "2026-08-27T00:00:00Z",
+          pid: 12,
+          ppid: 1,
+          comm: "node",
+          path: "demo/runtime-demo.mjs",
+        },
+      ],
+      flows: [
+        {
+          flowId: "flow-1",
+          pid: 12,
+          comm: "node",
+          destAddr: "93.184.216.34",
+          destPort: 443,
+          destDomain: "example.com",
+          bytesOut: 120,
+          bytesIn: 500,
+          startedAt: "2026-08-27T00:00:00Z",
+          policyDecision: "deny",
+        },
+      ],
+      detections: [],
     });
-    const c = await correlateFindingToRuntime(
-      client,
-      { filePath: "apps/web/lib/auth.ts" },
-      { repository: "garnet-labs/dub" },
+    const result = await correlateFindingToRuntime(
+      new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin" },
     );
-    expect(c.verdict).toBe("reachable-but-no-abuse");
-    expect(c.pathExecuted).toBe(true);
+    expect(result.status).toBe("behavior-observed");
+    expect(result.reasoning).toContain("not an exploitability verdict");
+    expect(result.networkDestinations[0]?.domain).toBe("example.com");
   });
 
-  it("returns exploitable-runtime-confirmed when the network policy denied an egress from the path", async () => {
-    const client = new GarnetClient({
-      apiToken: "t",
-      fetchImpl: fakeFetch({
-        "/v1/runs?repository=garnet-labs%2Fdub&limit=5": [
-          { runId: "r1", workflowName: "Garnet x DeepSec — Supply-Chain Blindspot Demo", startedAt: "2026-05-04T23:01:18Z" },
-        ],
-        "/v1/runs/r1/events?path=.garnet-demo%2Fpostinstall.js": [
-          { kind: "process.spawn", ts: "x", pid: 1234, ppid: 1, comm: "node", path: ".garnet-demo/postinstall.js" },
-        ],
-        "/v1/runs/r1/flows?path=.garnet-demo%2Fpostinstall.js": [
-          { flowId: "f1", pid: 1234, comm: "node", destAddr: "46.4.105.116", destPort: 443, destDomain: "webhook.site", bytesOut: 0, bytesIn: 0, startedAt: "x", policyDecision: "deny" },
-        ],
-        "/v1/runs/r1/detections?path=.garnet-demo%2Fpostinstall.js": [],
-      }),
+  it("returns unable-to-verify when an absence result has partial capture", async () => {
+    const routes = profileRoutes({
+      events: new Error("events unavailable"),
+      flows: [],
+      detections: [],
     });
-    const c = await correlateFindingToRuntime(
-      client,
-      { filePath: ".garnet-demo/postinstall.js" },
-      { repository: "garnet-labs/dub" },
+    const result = await correlateFindingToRuntime(
+      new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin" },
     );
-    expect(c.verdict).toBe("exploitable-runtime-confirmed");
-    expect(c.reasoning).toMatch(/denied/);
-    expect(c.networkDestinations[0]?.domain).toBe("webhook.site");
+    expect(result.status).toBe("unable-to-verify");
+    expect(result.captureStatus).toBe("partial");
+    expect(result.limitations).toHaveLength(1);
   });
 });
+
+function profileRoutes(input: {
+  events: unknown;
+  flows: unknown;
+  detections: unknown;
+}) {
+  return {
+    "/v1/runs?repository=garnet-labs%2Fdeepsec-plugin&limit=5": [
+      {
+        runId: "123",
+        workflowName: "CI",
+        startedAt: "2026-08-27T00:00:00Z",
+      },
+    ],
+    "/v1/runs/123/events?path=demo%2Fruntime-demo.mjs": input.events,
+    "/v1/runs/123/flows?path=demo%2Fruntime-demo.mjs": input.flows,
+    "/v1/runs/123/detections?path=demo%2Fruntime-demo.mjs": input.detections,
+  };
+}
