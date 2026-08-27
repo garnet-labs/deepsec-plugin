@@ -1,6 +1,6 @@
 import https from "node:https";
 
-const destination = "https://example.org/garnet-test-change";
+const destination = "https://example.net/garnet-test-change-2";
 
 await new Promise((resolve, reject) => {
   const request = https.get(destination, (response) => {
