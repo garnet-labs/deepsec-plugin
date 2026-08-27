@@ -1,0 +1,34 @@
+{
+  "filePath": "demo/runtime-demo.mjs",
+  "projectId": "deepsec-plugin-demo",
+  "candidates": [],
+  "lastScannedAt": "2026-08-27T00:00:00.000Z",
+  "lastScannedRunId": "deepsec-scan-demo",
+  "fileHash": "demo-fixture",
+  "findings": [
+    {
+      "findingId": "finding_deepsec_garnet_demo",
+      "severity": "MEDIUM",
+      "vulnSlug": "unrestricted-outbound-request",
+      "title": "Outbound request destination is controlled by application code",
+      "description": "The demo workload performs an outbound request. Runtime evidence is needed to show which destination was actually contacted during CI.",
+      "lineNumbers": [3],
+      "recommendation": "Review the runtime destination and constrain outbound access where appropriate.",
+      "confidence": "high",
+      "producedByRunId": "deepsec-process-demo"
+    }
+  ],
+  "analysisHistory": [
+    {
+      "runId": "deepsec-process-demo",
+      "investigatedAt": "2026-08-27T00:00:30.000Z",
+      "durationMs": 250,
+      "agentType": "fixture",
+      "model": "fixture",
+      "modelConfig": {},
+      "findingCount": 1,
+      "phase": "process"
+    }
+  ],
+  "status": "analyzed"
+}
