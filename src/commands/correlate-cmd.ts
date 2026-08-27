@@ -71,6 +71,10 @@ export function registerCorrelateCommand(
       "JSON file produced by deepsec export --format json --out <file>",
     )
     .requiredOption("--repository <repo>", "GitHub repository in owner/repo form")
+    .requiredOption(
+      "--run-id <id>",
+      "Exact Garnet/GitHub run ID whose completed profile should be queried",
+    )
     .option("--workflow <name>", "Query a specific workflow name")
     .option("--out <file>", "Correlated JSON output", "./.deepsec/garnet-correlated.json")
     .option("--summary <file>", "Summary JSON output")
@@ -83,6 +87,7 @@ export function registerCorrelateCommand(
       const client = new GarnetClient({ apiToken: opts.apiToken, baseUrl: opts.baseUrl });
       const result = await correlateExportedFindings(client, input as ExportedFinding[], {
         repository: options.repository!,
+        runId: options.runId!,
         workflowName: options.workflow,
       });
       const outFile = options.out!;

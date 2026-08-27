@@ -59,6 +59,7 @@ npx deepsec export --format json --out .deepsec/findings.json
 npx deepsec garnet-correlate \
   --findings .deepsec/findings.json \
   --repository "$GITHUB_REPOSITORY" \
+  --run-id "$GITHUB_RUN_ID" \
   --workflow "CI" \
   --out .deepsec/garnet-correlated.json
 ```
@@ -83,7 +84,7 @@ That command is an executable integration contract, not a unit-test shortcut. It
 4. runs `deepsec export` against a deterministic Deepsec data mirror;
 5. runs `deepsec garnet-correlate` through Deepsec's plugin registry; and
 6. asserts that the resulting Deepsec finding contains `path-observed` plus the
-   expected runtime destination.
+   expected runtime destination and exact requested run ID.
 
 The harness uses a deterministic local server for the proposed Garnet REST responses.
 It proves the Deepsec plugin lifecycle and the adapter's request/response contract. It

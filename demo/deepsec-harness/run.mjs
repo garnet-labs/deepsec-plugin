@@ -35,6 +35,24 @@ const server = createServer((request, response) => {
     return;
   }
 
+  if (url.pathname === "/v1/runs/garnet-profile-demo/profile") {
+    response.end(
+      JSON.stringify({
+        agentId: "agent-demo",
+        repository: "garnet-labs/deepsec-plugin",
+        workflowName: "CI",
+        runId: "garnet-profile-demo",
+        jobId: "job-demo",
+        startedAt: "2026-08-27T00:01:00.000Z",
+        endedAt: "2026-08-27T00:02:00.000Z",
+        events: [],
+        flows: [],
+        detections: [],
+      }),
+    );
+    return;
+  }
+
   if (url.pathname.endsWith("/events")) {
     response.end(
       JSON.stringify([
@@ -120,6 +138,8 @@ try {
       findingsFile,
       "--repository",
       "garnet-labs/deepsec-plugin",
+      "--run-id",
+      "garnet-profile-demo",
       "--workflow",
       "CI",
       "--out",
@@ -143,7 +163,13 @@ try {
     "not-observed": 0,
     "unable-to-verify": 0,
   });
+  assert.equal(correlated[0].garnet.correlatedRuns[0].runId, "garnet-profile-demo");
   assert.equal(requests.length, 4);
+  assert.equal(
+    requests[0],
+    "GET /v1/runs/garnet-profile-demo/profile",
+    "correlation must bind to the explicitly requested run",
+  );
 
   console.log("DeepSec harness loaded @garnet-org/deepsec-plugin from deepsec.config.ts");
   console.log("DeepSec exported 1 finding from its native data mirror");
