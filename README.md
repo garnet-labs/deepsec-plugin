@@ -18,6 +18,17 @@ Per-finding output looks like this:
 | ⚪ `unreachable-in-this-suite` | No runtime events for this path across recent runs (likely lower priority) |
 | ⚫ `no-runtime-data` | No Garnet profile available |
 
+## Test-PR proof of integration
+
+This repo includes an integration-style test that proves the PR notifier emits Garnet evidence in the posted comment:
+
+- Test file: [`src/__tests__/github-pr-notifier.test.ts`](src/__tests__/github-pr-notifier.test.ts)
+- Assertion highlights:
+  - `#### Garnet runtime correlation`
+  - `Runtime evidence: exploitable`
+  - detection slug (example: `secret_exfiltration`)
+  - observed destination (example: `webhook.site`)
+
 ## Install
 
 ```bash
