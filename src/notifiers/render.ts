@@ -1,50 +1,82 @@
 import type { RuntimeCorrelation } from "../types/garnet.js";
 
-const VERDICT_BADGE: Record<RuntimeCorrelation["verdict"], string> = {
-  "exploitable-runtime-confirmed":
-    "🔴 **Runtime evidence: exploitable** — observed by Garnet during CI",
-  "reachable-but-no-abuse":
-    "🟡 **Runtime evidence: reachable** — code path fires under tests, no abuse observed yet",
-  "unreachable-in-this-suite":
-    "⚪ **Runtime evidence: unreachable** — no observed execution in current CI suites (likely lower priority)",
-  "no-runtime-data":
-    "⚫ **Runtime evidence: unavailable** — no Garnet profile for this repository",
+const STATUS_TEXT: Record<RuntimeCorrelation["status"], string> = {
+  "behavior-observed": "Behavior observed; review recorded evidence",
+  "path-observed": "Code path observed in queried profiles",
+  "not-observed": "Not observed in queried profiles",
+  "unable-to-verify": "Unable to verify from available profiles",
 };
 
-export function renderRuntimeBlock(c: RuntimeCorrelation): string {
-  const lines: string[] = [];
-  lines.push(`#### Garnet runtime correlation`);
-  lines.push(``);
-  lines.push(VERDICT_BADGE[c.verdict]);
-  lines.push(``);
-  lines.push(`> ${c.reasoning}`);
-  lines.push(``);
+function escapeMarkdown(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replace(/([`*_[\]<>|])/g, "\\$1")
+    .replaceAll("@", "@\u200b");
+}
 
-  if (c.detections.length > 0) {
-    lines.push(`**Detections fired:**`);
-    for (const d of c.detections) {
-      lines.push(`- \`${d.recipeSlug}\` (${d.severity}) — ${d.details}`);
+function inlineCode(value: string): string {
+  return `\`${value.replaceAll("`", "'").replace(/\s+/g, " ")}\``;
+}
+
+function tableCell(value: string): string {
+  return escapeMarkdown(value).replace(/\r?\n/g, " ");
+}
+
+export function renderRuntimeBlock(correlation: RuntimeCorrelation): string {
+  const lines = [
+    "#### Garnet runtime observation",
+    "",
+    `**${STATUS_TEXT[correlation.status]}**`,
+    "",
+    `> ${escapeMarkdown(correlation.reasoning)}`,
+    "",
+    `Capture: ${correlation.captureStatus}`,
+  ];
+
+  if (correlation.limitations.length > 0) {
+    lines.push("", "**Limitations:**");
+    for (const limitation of correlation.limitations) {
+      lines.push(`- ${escapeMarkdown(limitation)}`);
     }
-    lines.push(``);
   }
 
-  if (c.networkDestinations.length > 0) {
-    lines.push(`**Network destinations reached during execution:**`);
-    lines.push(``);
-    lines.push(`| Destination | Port | Bytes out |`);
-    lines.push(`|---|---|---|`);
-    for (const d of c.networkDestinations) {
-      lines.push(`| ${d.domain ?? d.addr} | ${d.port} | ${d.bytesOut} |`);
+  if (correlation.detections.length > 0) {
+    lines.push("", "**Recorded detections:**");
+    for (const detection of correlation.detections) {
+      lines.push(
+        `- ${inlineCode(detection.recipeSlug)} (${escapeMarkdown(detection.severity)}): ` +
+          escapeMarkdown(detection.details),
+      );
     }
-    lines.push(``);
   }
 
-  if (c.correlatedRuns.length > 0) {
+  if (correlation.networkDestinations.length > 0) {
     lines.push(
-      `<sub>Correlated against ${c.correlatedRuns.length} Garnet run(s): ${c.correlatedRuns
-        .map((r) => `\`${r.workflowName}\``)
-        .join(", ")}</sub>`,
+      "",
+      "**Recorded network destinations:**",
+      "",
+      "| Destination | Port | Bytes out |",
+      "|---|---:|---:|",
+    );
+    for (const destination of correlation.networkDestinations) {
+      lines.push(
+        `| ${tableCell(destination.domain ?? destination.addr)} | ${destination.port} | ` +
+          `${destination.bytesOut} |`,
+      );
+    }
+  }
+
+  if (correlation.correlatedRuns.length > 0) {
+    lines.push(
+      "",
+      `<sub>Queried ${correlation.correlatedRuns.length} Garnet profile(s): ` +
+        correlation.correlatedRuns
+          .map((run) => inlineCode(run.workflowName))
+          .join(", ") +
+        "</sub>",
     );
   }
   return lines.join("\n");
 }
+
+export { escapeMarkdown };

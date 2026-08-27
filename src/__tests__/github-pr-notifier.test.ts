@@ -1,91 +1,91 @@
-import { describe, it, expect } from "vitest";
+import type { NotifyParams } from "deepsec/config";
+import { describe, expect, it } from "vitest";
 import { GarnetClient } from "../garnet-client.js";
 import { garnetGithubPrNotifier } from "../notifiers/github-pr.js";
 
-function fakeGarnetFetch(routes: Record<string, unknown>, seenPaths: string[]): typeof fetch {
-  return (async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
-    const path = new URL(url).pathname + new URL(url).search;
-    seenPaths.push(path);
-    const body = routes[path];
-    if (body === undefined) {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  }) as typeof fetch;
-}
-
 describe("garnetGithubPrNotifier", () => {
-  it("posts a PR comment that includes Garnet runtime evidence", async () => {
-    const seenGarnetPaths: string[] = [];
+  it("implements the Deepsec 2.x notifier contract and renders neutral evidence", async () => {
     const garnet = new GarnetClient({
-      apiToken: "t",
-      fetchImpl: fakeGarnetFetch({
-        "/v1/runs?repository=garnet-labs%2Fdub&limit=5": [
-          { runId: "r1", workflowName: "Playwright E2E Tests", startedAt: "2026-05-04T22:52:26Z" },
-        ],
-        "/v1/runs/r1/events?path=apps%2Fweb%2Flib%2Fauth.ts": [
-          { kind: "process.spawn", ts: "x", pid: 1, ppid: 0, comm: "node", path: "apps/web/lib/auth.ts" },
-        ],
-        "/v1/runs/r1/flows?path=apps%2Fweb%2Flib%2Fauth.ts": [
-          { flowId: "f1", pid: 1, comm: "node", destAddr: "1.2.3.4", destPort: 443, destDomain: "webhook.site", bytesOut: 512, bytesIn: 64, startedAt: "x", policyDecision: "allow" },
-        ],
-        "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts": [
-          { recipeSlug: "secret_exfiltration", severity: "high", ts: "x", pid: 1, comm: "node", details: "Outbound exfiltration pattern", evidenceEventIds: ["e1"] },
-        ],
-      }, seenGarnetPaths),
+      apiToken: "test",
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = new URL(typeof input === "string" ? input : input.toString());
+        const routes: Record<string, unknown> = {
+          "/v1/runs?repository=garnet-labs%2Fdeepsec-plugin&limit=5": [
+            { runId: "123", workflowName: "CI", startedAt: "2026-08-27T00:00:00Z" },
+          ],
+          "/v1/runs/123/events?path=demo%2Fruntime-demo.mjs": [
+            {
+              kind: "process.spawn",
+              ts: "x",
+              pid: 1,
+              ppid: 0,
+              comm: "node",
+              path: "demo/runtime-demo.mjs",
+            },
+          ],
+          "/v1/runs/123/flows?path=demo%2Fruntime-demo.mjs": [],
+          "/v1/runs/123/detections?path=demo%2Fruntime-demo.mjs": [],
+        };
+        const body = routes[url.pathname + url.search];
+        return body === undefined ? new Response("not found", { status: 404 }) : Response.json(body);
+      }) as typeof fetch,
     });
 
-    let postedBody = "";
+    let posted = "";
     const notifier = garnetGithubPrNotifier({
       garnet,
-      repository: "garnet-labs/dub",
+      repository: "garnet-labs/deepsec-plugin",
+      now: () => new Date("2026-08-27T00:00:00Z"),
       github: {
-        token: "ghs_test",
+        token: "github-test",
         owner: "garnet-labs",
-        repo: "dub",
-        pullNumber: 123,
+        repo: "deepsec-plugin",
+        pullNumber: 2,
         fetchImpl: (async (_input: RequestInfo | URL, init?: RequestInit) => {
-          postedBody = String(init?.body ?? "");
-          return new Response(
-            JSON.stringify({ id: 987, html_url: "https://github.com/garnet-labs/dub/pull/123#issuecomment-987" }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          );
+          posted = String(init?.body);
+          return Response.json({
+            id: 987,
+            html_url: "https://github.com/garnet-labs/deepsec-plugin/pull/2#issuecomment-987",
+          });
         }) as typeof fetch,
       },
     });
 
-    const out = await notifier.notify({
+    const params: NotifyParams = {
+      projectId: "deepsec-plugin",
       finding: {
-        severity: "high",
-        title: "Potential token leak",
-        description: "Untrusted path can trigger outbound request with sensitive material.",
-        recommendation: "Validate destination and block untrusted egress.",
-        lineNumbers: [12, 15],
-        vulnSlug: "token-leak",
+        severity: "HIGH",
+        vulnSlug: "review-egress",
+        title: "Review outbound destination",
+        description: "A changed script reaches a new destination.",
+        recommendation: "Confirm that the destination is intended.",
+        lineNumbers: [1],
         confidence: "high",
       },
-      fileRecord: { filePath: "apps/web/lib/auth.ts", projectId: "dub" },
-      projectId: "dub",
-    });
+      record: {
+        filePath: "demo/runtime-demo.mjs",
+        projectId: "deepsec-plugin",
+        candidates: [],
+        lastScannedAt: "2026-08-27T00:00:00Z",
+        lastScannedRunId: "deepsec-1",
+        fileHash: "abc",
+        findings: [],
+        analysisHistory: [],
+        status: "analyzed",
+      },
+    };
 
-    const body = JSON.parse(postedBody) as { body: string };
-    expect(body.body).toContain("#### Garnet runtime correlation");
-    expect(body.body).toContain("Runtime evidence: exploitable");
-    expect(body.body).toContain("secret_exfiltration");
-    expect(body.body).toContain("webhook.site");
-    expect(seenGarnetPaths).toEqual([
-      "/v1/runs?repository=garnet-labs%2Fdub&limit=5",
-      "/v1/runs/r1/events?path=apps%2Fweb%2Flib%2Fauth.ts",
-      "/v1/runs/r1/flows?path=apps%2Fweb%2Flib%2Fauth.ts",
-      "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts",
-    ]);
-    expect(out).toEqual({
+    const result = await notifier.notify(params);
+    const body = JSON.parse(posted).body as string;
+    expect(body).toContain("#### Garnet runtime observation");
+    expect(body).toContain("Code path observed in queried profiles");
+    expect(body).not.toContain("exploitable");
+    expect(result).toEqual({
+      notifierName: "@garnet-org/notifier-github-pr",
+      notifiedAt: "2026-08-27T00:00:00.000Z",
       externalId: "987",
-      externalUrl: "https://github.com/garnet-labs/dub/pull/123#issuecomment-987",
+      externalUrl:
+        "https://github.com/garnet-labs/deepsec-plugin/pull/2#issuecomment-987",
     });
   });
 });

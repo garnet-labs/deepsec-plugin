@@ -1,140 +1,96 @@
 # `@garnet-org/deepsec-plugin`
 
-A [Vercel deepsec](https://github.com/vercel-labs/deepsec) plugin that supplements static findings with **runtime evidence from Garnet**. Every deepsec finding becomes a triple: the static issue, the runtime trace of the path it lives on, and a verdict that combines both.
+Experimental integration between [Vercel Deepsec](https://github.com/vercel-labs/deepsec)
+and Garnet Runtime Review. Deepsec supplies a static finding; Garnet supplies a
+separate, factual record of what an instrumented CI job executed and reached.
 
-## What it does
+The integration does not turn runtime observations into “safe,” “malicious,” or
+“exploitable” verdicts. Repository policy and reviewers retain the merge decision.
 
-deepsec finds vulnerabilities in your codebase using Claude Opus 4.7 and GPT 5.5. Garnet captures eBPF-level runtime evidence (syscalls, network flows, detection-recipe matches) from your CI workflows. This plugin glues them together at the deepsec plugin surface:
+## What works today
 
-- **`notifiers` slot** — when deepsec posts a finding to a PR, the comment includes a Garnet runtime correlation block: did this code path actually fire in CI? what did it touch? was any egress denied by network policy?
-- **`commands` slot** — adds a `deepsec garnet-correlate` subcommand that enriches `deepsec export`-produced finding JSONs with the same correlation, for offline triage.
+- The package compiles against the public Deepsec `2.x` plugin interfaces.
+- `deepsec garnet-correlate` reads the JSON array produced by
+  `deepsec export --format json`; its path-scoped Garnet API adapter is
+  experimental and must be validated against the target deployment before release.
+- Correlation output distinguishes `behavior-observed`, `path-observed`,
+  `not-observed`, and `unable-to-verify`.
+- Failed or incomplete evidence queries cannot become an absence claim.
+- CI runs the SHA-pinned Garnet Action, which publishes the visible Runtime Review
+  receipt for each pull request.
 
-Per-finding output looks like this:
-
-| Verdict | When it's emitted |
-|---|---|
-| 🔴 `exploitable-runtime-confirmed` | Garnet captured a detection on the path's process tree, **or** the network policy denied an egress attempt from it |
-| 🟡 `reachable-but-no-abuse` | Path fired under tests, no detections this run |
-| ⚪ `unreachable-in-this-suite` | No runtime events for this path across recent runs (likely lower priority) |
-| ⚫ `no-runtime-data` | No Garnet profile available |
-
-## Test-PR proof of integration
-
-This repo includes an integration-style test that proves the PR notifier emits Garnet evidence in the posted comment:
-
-- Test file: [`src/__tests__/github-pr-notifier.test.ts`](src/__tests__/github-pr-notifier.test.ts)
-- Assertion highlights:
-  - `#### Garnet runtime correlation`
-  - `Runtime evidence: exploitable`
-  - detection slug (example: `secret_exfiltration`)
-  - observed destination (example: `webhook.site`)
-  - direct Garnet API interaction:
-    - `/v1/runs?repository=...`
-    - `/v1/runs/{runId}/events?path=...`
-    - `/v1/runs/{runId}/flows?path=...`
-    - `/v1/runs/{runId}/detections?path=...`
-
-It also includes an execution-path test for the CLI correlation command:
-
-- Test file: [`src/__tests__/correlate-cmd.test.ts`](src/__tests__/correlate-cmd.test.ts)
-- What it verifies:
-  - runs `garnet-correlate` command handler over exported finding JSON
-  - writes enriched output JSON with `garnet.verdict`
-  - writes `_summary.json` with verdict counts
-  - calls the same Garnet API endpoints during correlation
+Deepsec currently registers notifier plugins but does not invoke them in its command
+path. The typed GitHub notifier adapter and its contract test are retained for that
+future hook; it is not presented as the live demo surface.
 
 ## Install
 
 ```bash
-pnpm add -D @garnet-org/deepsec-plugin
+npm install --save-dev deepsec @garnet-org/deepsec-plugin
 ```
 
-## Wire it up
+## Configure
 
 ```ts
-// deepsec.config.ts
 import { defineConfig } from "deepsec/config";
 import garnetPlugin from "@garnet-org/deepsec-plugin";
 
 export default defineConfig({
-  projects: [{ id: "dub", root: ".." }],
+  projects: [{ id: "my-repo", root: ".." }],
   plugins: [
     garnetPlugin({
-      // Reads from process.env by default:
-      //   GARNET_API_TOKEN, GITHUB_REPOSITORY, GITHUB_TOKEN, GITHUB_REF
-      workflowName: "Playwright E2E Tests",
+      workflowName: "CI",
     }),
   ],
 });
 ```
 
-## CI flow
+The plugin reads `GARNET_API_TOKEN` and `GITHUB_REPOSITORY` from the environment by
+default. Do not expose the Garnet token to untrusted fork pull requests.
 
-```yaml
-# .github/workflows/security.yml
-name: Security
-on: [pull_request]
+## Correlate a Deepsec export
 
-jobs:
-  # 1. Garnet runs alongside your normal CI workflows; profiles are
-  #    captured automatically (see https://garnet.ai/docs/quickstart).
+```bash
+npx deepsec export --format json --out .deepsec/findings.json
 
-  # 2. deepsec runs on the PR, with the Garnet plugin loaded.
-  deepsec:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - name: deepsec scan + process + correlate
-        env:
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-          GARNET_API_TOKEN:   ${{ secrets.GARNET_API_TOKEN }}
-          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx deepsec scan
-          npx deepsec process
-          npx deepsec triage
-          npx deepsec export --format json-dir --out findings/
-          # Plugin-registered subcommand:
-          npx deepsec garnet-correlate \
-            --findings-dir findings/ \
-            --repository ${{ github.repository }} \
-            --workflow "Playwright E2E Tests" \
-            --out garnet-correlated/
+npx deepsec garnet-correlate \
+  --findings .deepsec/findings.json \
+  --repository "$GITHUB_REPOSITORY" \
+  --workflow "CI" \
+  --out .deepsec/garnet-correlated.json
 ```
 
-## API
+The command writes the enriched finding array and a sibling
+`.summary.json` file. Runtime data remains supporting evidence rather than a
+replacement for Deepsec revalidation or repository policy.
 
-```ts
-import { correlateFindingToRuntime, GarnetClient } from "@garnet-org/deepsec-plugin";
+## Live pull request proof
 
-const client = new GarnetClient({ apiToken: process.env.GARNET_API_TOKEN! });
-const correlation = await correlateFindingToRuntime(
-  client,
-  { filePath: "apps/web/lib/api/links/route.ts" },
-  { repository: "garnet-labs/dub", workflowName: "Playwright E2E Tests" },
-);
-console.log(correlation.verdict, correlation.reasoning);
+This repository's CI starts Garnet before install, build, tests, and a dedicated
+runtime demo process. `demo/runtime-demo.mjs` reaches `example.com` on `main`.
+
+For a test pull request, change only that destination to `example.org`. The expected
+proof is not a mocked plugin comment. It is the Garnet-owned Check/comment and exact
+Execution Profile showing the destination delta for the PR head:
+
+```text
+main:     node -> example.com
+test PR:  node -> example.org
 ```
 
-## Decision rule (deterministic, auditable)
+Reviewers can then compare Deepsec's static description of the changed script with
+Garnet's observed execution receipt. Neither system silently decides whether to
+merge.
 
-```
-if any detection on the process tree that touched filePath:
-  → exploitable-runtime-confirmed
-elif any flow.policyDecision === "deny" from that process tree:
-  → exploitable-runtime-confirmed
-elif any runtime event references filePath:
-  → reachable-but-no-abuse
-elif at least one Garnet run was correlated:
-  → unreachable-in-this-suite
-else:
-  → no-runtime-data
-```
+## Observation contract
 
-The full correlation logic lives in [`src/correlate.ts`](src/correlate.ts) with unit tests in [`src/__tests__/correlate.test.ts`](src/__tests__/correlate.test.ts).
+| Status | Meaning |
+|---|---|
+| `behavior-observed` | A detection or denied egress was returned for the queried path |
+| `path-observed` | File-attributed runtime events were returned |
+| `not-observed` | No file-attributed event was returned from complete queries; this is not proof of unreachability |
+| `unable-to-verify` | No profile was available, or incomplete queries prevent an absence claim |
 
 ## License
 
-Apache-2.0, matching deepsec.
+Apache-2.0.
