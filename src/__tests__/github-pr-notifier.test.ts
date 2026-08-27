@@ -2,10 +2,11 @@ import { describe, it, expect } from "vitest";
 import { GarnetClient } from "../garnet-client.js";
 import { garnetGithubPrNotifier } from "../notifiers/github-pr.js";
 
-function fakeGarnetFetch(routes: Record<string, unknown>): typeof fetch {
+function fakeGarnetFetch(routes: Record<string, unknown>, seenPaths: string[]): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
     const path = new URL(url).pathname + new URL(url).search;
+    seenPaths.push(path);
     const body = routes[path];
     if (body === undefined) {
       return new Response("not found", { status: 404 });
@@ -19,6 +20,7 @@ function fakeGarnetFetch(routes: Record<string, unknown>): typeof fetch {
 
 describe("garnetGithubPrNotifier", () => {
   it("posts a PR comment that includes Garnet runtime evidence", async () => {
+    const seenGarnetPaths: string[] = [];
     const garnet = new GarnetClient({
       apiToken: "t",
       fetchImpl: fakeGarnetFetch({
@@ -34,7 +36,7 @@ describe("garnetGithubPrNotifier", () => {
         "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts": [
           { recipeSlug: "secret_exfiltration", severity: "high", ts: "x", pid: 1, comm: "node", details: "Outbound exfiltration pattern", evidenceEventIds: ["e1"] },
         ],
-      }),
+      }, seenGarnetPaths),
     });
 
     let postedBody = "";
@@ -75,6 +77,12 @@ describe("garnetGithubPrNotifier", () => {
     expect(body.body).toContain("Runtime evidence: exploitable");
     expect(body.body).toContain("secret_exfiltration");
     expect(body.body).toContain("webhook.site");
+    expect(seenGarnetPaths).toEqual([
+      "/v1/runs?repository=garnet-labs%2Fdub&limit=5",
+      "/v1/runs/r1/events?path=apps%2Fweb%2Flib%2Fauth.ts",
+      "/v1/runs/r1/flows?path=apps%2Fweb%2Flib%2Fauth.ts",
+      "/v1/runs/r1/detections?path=apps%2Fweb%2Flib%2Fauth.ts",
+    ]);
     expect(out).toEqual({
       externalId: "987",
       externalUrl: "https://github.com/garnet-labs/dub/pull/123#issuecomment-987",

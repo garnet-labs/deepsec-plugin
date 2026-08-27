@@ -28,6 +28,11 @@ This repo includes an integration-style test that proves the PR notifier emits G
   - `Runtime evidence: exploitable`
   - detection slug (example: `secret_exfiltration`)
   - observed destination (example: `webhook.site`)
+  - direct Garnet API interaction:
+    - `/v1/runs?repository=...`
+    - `/v1/runs/{runId}/events?path=...`
+    - `/v1/runs/{runId}/flows?path=...`
+    - `/v1/runs/{runId}/detections?path=...`
 
 ## Install
 
