@@ -43,7 +43,7 @@ export async function correlateFindingToRuntime(
   }
 
   for (const profile of exactProfiles) {
-    const profileRepository = `${profile.organization}/${profile.repository}`;
+    const profileRepository = `${profile.githubOrg}/${profile.repo}`;
     if (
       profileRepository.toLowerCase() !== opts.repository.toLowerCase() ||
       profile.runID !== opts.runId

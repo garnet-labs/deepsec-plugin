@@ -105,8 +105,10 @@ describe("correlateFindingToRuntime", () => {
           "/api/v1/profiles/456": {
             id: "profile-456",
             agentID: "agent-456",
-            organization: "other-org",
-            repository: "other-repo",
+            githubOrg: "other-org",
+            repo: "other-repo",
+            runAttempt: 1,
+            github_details_verified: true,
             job: "DeepSec runtime evidence",
             runID: "wrong-run",
             createdAt: "2026-09-04T00:00:00Z",
@@ -123,13 +125,41 @@ describe("correlateFindingToRuntime", () => {
     ]);
   });
 
+  it("accepts profile identity fields emitted by the control-plane API", async () => {
+    const result = await correlateFindingToRuntime(
+      new GarnetClient({
+        apiToken: "test",
+        fetchImpl: fakeFetch({
+          "/api/v1/profiles/456": {
+            id: "profile-456",
+            agentID: "agent-456",
+            githubOrg: "garnet-labs",
+            repo: "deepsec-plugin",
+            runAttempt: 1,
+            github_details_verified: true,
+            job: "DeepSec runtime evidence",
+            runID: "456",
+            createdAt: "2026-09-04T00:00:00Z",
+          },
+        }),
+      }),
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin", runId: "456" },
+    );
+
+    expect(result.status).toBe("not-observed");
+    expect(result.limitations).toEqual([]);
+  });
+
   it("binds correlation to an explicitly requested run", async () => {
     const routes = {
       "/api/v1/profiles/456": {
         id: "profile-456",
         agentID: "agent-456",
-        organization: "garnet-labs",
-        repository: "deepsec-plugin",
+        githubOrg: "garnet-labs",
+        repo: "deepsec-plugin",
+        runAttempt: 1,
+        github_details_verified: true,
         job: "DeepSec runtime evidence",
         runID: "456",
         createdAt: "2026-09-04T00:00:00Z",
@@ -204,8 +234,10 @@ function profileRoutes(input: {
     "/api/v1/profiles/123": {
       id: "profile-123",
       agentID: "agent-123",
-      organization: "garnet-labs",
-      repository: "deepsec-plugin",
+      githubOrg: "garnet-labs",
+      repo: "deepsec-plugin",
+      runAttempt: 1,
+      github_details_verified: true,
       job: "CI",
       runID: "123",
       createdAt: "2026-08-27T00:00:00Z",

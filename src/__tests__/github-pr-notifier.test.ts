@@ -13,8 +13,10 @@ describe("garnetGithubPrNotifier", () => {
           "/api/v1/profiles/123": {
             id: "profile-123",
             agentID: "agent-123",
-            organization: "garnet-labs",
-            repository: "deepsec-plugin",
+            githubOrg: "garnet-labs",
+            repo: "deepsec-plugin",
+            runAttempt: 1,
+            github_details_verified: true,
             job: "CI",
             runID: "123",
             createdAt: "2026-08-27T00:00:00Z",

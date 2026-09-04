@@ -33,8 +33,10 @@ export interface GarnetPeer {
 export interface GarnetProfileEnvelope {
   id: string;
   agentID: string;
-  organization: string;
-  repository: string;
+  githubOrg: string;
+  repo: string;
+  runAttempt: number;
+  github_details_verified: boolean;
   job: string;
   runID: string;
   createdAt: string;
