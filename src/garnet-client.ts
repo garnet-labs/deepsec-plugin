@@ -2,7 +2,14 @@
 // In a real release this lives behind a versioned client SDK; this is the
 // minimal shape needed to make the plugin runnable end-to-end.
 
-import type { GarnetProfile, GarnetEvent, GarnetFlow, GarnetDetection } from "./types/garnet.js";
+import type {
+  GarnetProfile,
+  GarnetProfileEnvelope,
+  GarnetProfilePage,
+  GarnetEvent,
+  GarnetFlow,
+  GarnetDetection,
+} from "./types/garnet.js";
 
 export interface GarnetClientOptions {
   baseUrl?: string;             // default: https://api.garnet.ai
@@ -23,7 +30,7 @@ export class GarnetClient {
 
   private async get<T>(path: string): Promise<T> {
     const res = await this.f(`${this.base}${path}`, {
-      headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+      headers: { "X-Project-Token": this.token, accept: "application/json" },
     });
     if (!res.ok) throw new Error(`garnet api ${path}: ${res.status} ${res.statusText}`);
     return (await res.json()) as T;
@@ -39,9 +46,17 @@ export class GarnetClient {
     );
   }
 
-  /** Fetch the full profile for a single run. */
+  /** Fetch the canonical profile envelope for a single workflow run. */
   getProfile(runId: string) {
-    return this.get<GarnetProfile>(`/v1/runs/${encodeURIComponent(runId)}/profile`);
+    return this.get<GarnetProfileEnvelope>(`/api/v1/profiles/${encodeURIComponent(runId)}`);
+  }
+
+  /** Fetch canonical profiles for the action-created agent, bound to one workflow run. */
+  getProfilesForAgent(agentId: string, runId: string) {
+    const q = new URLSearchParams({ run_id: runId, first: "20" });
+    return this.get<GarnetProfilePage>(
+      `/api/v1/agents/${encodeURIComponent(agentId)}/profiles?${q}`,
+    );
   }
 
   /** Server-side filter: events in a profile that touched a specific file path. */

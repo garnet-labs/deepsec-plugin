@@ -15,6 +15,9 @@ export interface CorrelateOptions {
   repository: string;
   workflowName?: string;
   maxRuns?: number;
+  runId?: string;
+  agentId?: string;
+  stepName?: string;
 }
 
 export async function correlateFindingToRuntime(
@@ -22,10 +25,21 @@ export async function correlateFindingToRuntime(
   finding: FindingLike,
   opts: CorrelateOptions,
 ): Promise<RuntimeCorrelation> {
-  const runs = await client.listRuns(opts.repository, {
-    workflowName: opts.workflowName,
-    limit: opts.maxRuns ?? 5,
-  });
+  const exactProfiles = opts.runId
+    ? opts.agentId
+      ? (await client.getProfilesForAgent(opts.agentId, opts.runId)).items
+      : [await client.getProfile(opts.runId)]
+    : undefined;
+  const runs = exactProfiles
+    ? exactProfiles.map((profile) => ({
+        runId: profile.runID,
+        workflowName: profile.job,
+        startedAt: profile.createdAt,
+      }))
+    : await client.listRuns(opts.repository, {
+        workflowName: opts.workflowName,
+        limit: opts.maxRuns ?? 5,
+      });
 
   if (runs.length === 0) {
     return emptyCorrelation(
@@ -39,7 +53,60 @@ export async function correlateFindingToRuntime(
   const detections: GarnetDetection[] = [];
   const limitations: string[] = [];
 
-  for (const run of runs) {
+  if (exactProfiles) {
+    const normalizedPath = finding.filePath.replaceAll("\\", "/");
+    const basename = normalizedPath.split("/").at(-1) ?? normalizedPath;
+    for (const profile of exactProfiles) {
+      const peers = profile.data?.network?.egress?.peers ?? [];
+      for (const peer of peers) {
+        const matchingTrees = (peer.proc_trees ?? []).filter((tree) => {
+          const pathMatch = [
+            tree.executable,
+            tree.arguments,
+            tree.process,
+            ...(tree.ancestry ?? []),
+          ].some(
+            (value) =>
+              value?.replaceAll("\\", "/").includes(normalizedPath) ||
+              value?.includes(basename),
+          );
+          const stepMatch =
+            opts.stepName !== undefined &&
+            tree.github_step?.toLowerCase().includes(opts.stepName.toLowerCase());
+          return pathMatch || stepMatch;
+        });
+        if (matchingTrees.length === 0) continue;
+        for (const tree of matchingTrees) {
+          events.push({
+            kind: "process.spawn",
+            ts: profile.createdAt,
+            pid: tree.pid ?? 0,
+            ppid: 0,
+            comm: tree.process ?? tree.executable ?? "unknown",
+            path: finding.filePath,
+          });
+        }
+        const names = peer.remote_names?.length ? peer.remote_names : [undefined];
+        const ports = peer.remote_ports?.length ? peer.remote_ports : ["0"];
+        for (const name of names) {
+          for (const port of ports) {
+            flows.push({
+              flowId: `${profile.id}:${peer.remote_address ?? name ?? "unknown"}:${port}`,
+              pid: matchingTrees[0]?.pid ?? 0,
+              comm: matchingTrees[0]?.process ?? matchingTrees[0]?.executable ?? "unknown",
+              destAddr: peer.remote_address ?? "",
+              destPort: Number.parseInt(port ?? "0", 10) || 0,
+              destDomain: name,
+              bytesOut: 0,
+              bytesIn: 0,
+              startedAt: profile.createdAt,
+              policyDecision: peer.result === "fail" ? "deny" : "observe",
+            });
+          }
+        }
+      }
+    }
+  } else for (const run of runs) {
     const results = await Promise.allSettled([
       client.getEventsForPath(run.runId, finding.filePath),
       client.getFlowsForPath(run.runId, finding.filePath),

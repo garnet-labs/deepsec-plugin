@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { correlateFindingToRuntime, type CorrelateOptions } from "../correlate.js";
 import { GarnetClient } from "../garnet-client.js";
+import { escapeMarkdown, renderRuntimeBlock } from "../notifiers/render.js";
 import type { RuntimeObservationStatus } from "../types/garnet.js";
 
 interface FluentCommand {
@@ -72,8 +73,12 @@ export function registerCorrelateCommand(
     )
     .requiredOption("--repository <repo>", "GitHub repository in owner/repo form")
     .option("--workflow <name>", "Query a specific workflow name")
+    .option("--run-id <id>", "Query one exact Garnet/GitHub Actions run")
+    .option("--agent-id <id>", "Query profiles emitted by one Garnet action instance")
+    .option("--step <name>", "Restrict attribution to a named GitHub Actions step")
     .option("--out <file>", "Correlated JSON output", "./.deepsec/garnet-correlated.json")
     .option("--summary <file>", "Summary JSON output")
+    .option("--comment-out <file>", "Write a PR-comment-shaped runtime evidence summary")
     .action(async (options) => {
       const input = JSON.parse(await fs.readFile(options.findings!, "utf8")) as unknown;
       if (!Array.isArray(input)) {
@@ -84,6 +89,9 @@ export function registerCorrelateCommand(
       const result = await correlateExportedFindings(client, input as ExportedFinding[], {
         repository: options.repository!,
         workflowName: options.workflow,
+        runId: options.runId ?? process.env.GITHUB_RUN_ID,
+        agentId: options.agentId ?? process.env.GARNET_AGENT_ID,
+        stepName: options.step,
       });
       const outFile = options.out!;
       const summaryFile =
@@ -96,6 +104,42 @@ export function registerCorrelateCommand(
       await fs.mkdir(path.dirname(path.resolve(summaryFile)), { recursive: true });
       await fs.writeFile(outFile, JSON.stringify(result.findings, null, 2) + "\n", "utf8");
       await fs.writeFile(summaryFile, JSON.stringify(result.summary, null, 2) + "\n", "utf8");
+      if (options.commentOut) {
+        await fs.mkdir(path.dirname(path.resolve(options.commentOut)), { recursive: true });
+        await fs.writeFile(
+          options.commentOut,
+          renderCorrelationComment(result.findings, options.runId ?? process.env.GITHUB_RUN_ID),
+          "utf8",
+        );
+      }
       console.log("garnet-correlate:", result.summary);
     });
+}
+
+function renderCorrelationComment(
+  findings: Array<ExportedFinding & { garnet: Awaited<ReturnType<typeof correlateFindingToRuntime>> }>,
+  runId?: string,
+): string {
+  const lines = [
+    "<!-- garnet-deepsec-correlation -->",
+    "## Runtime evidence for DeepSec findings",
+    "",
+    "Garnet adds observed execution context. DeepSec and repository policy retain the verdict.",
+  ];
+  if (runId) lines.push("", `<sub>exact CI run: \`${escapeMarkdown(runId)}\`</sub>`);
+
+  for (const finding of findings) {
+    const title = typeof finding.title === "string" ? finding.title : "DeepSec finding";
+    lines.push(
+      "",
+      "---",
+      "",
+      `### ${escapeMarkdown(title)}`,
+      "",
+      `<sub>${escapeMarkdown(finding.metadata.filePath)}</sub>`,
+      "",
+      renderRuntimeBlock(finding.garnet),
+    );
+  }
+  return lines.join("\n") + "\n";
 }
