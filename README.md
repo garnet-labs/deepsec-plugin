@@ -47,6 +47,8 @@ export default defineConfig({
 
 The plugin reads `GARNET_API_TOKEN` and `GITHUB_REPOSITORY` from the environment by
 default. Do not expose the Garnet token to untrusted fork pull requests.
+`workflowName` remains accepted for configuration compatibility but is unused by
+exact-run correlation.
 
 ## Correlate a Deepsec export
 
@@ -57,7 +59,6 @@ npx deepsec garnet-correlate \
   --findings .deepsec/findings.json \
   --repository "$GITHUB_REPOSITORY" \
   --run-id "$GITHUB_RUN_ID" \
-  --workflow "CI" \
   --comment-out .deepsec/garnet-comment.md \
   --out .deepsec/garnet-correlated.json
 ```
@@ -66,10 +67,9 @@ The command writes the enriched finding array and a sibling
 `.summary.json` file. Runtime data remains supporting evidence rather than a
 replacement for Deepsec revalidation or repository policy.
 
-In CI, pass `--run-id "$GITHUB_RUN_ID"` (or rely on the environment variable)
-to bind every observation to the exact workflow run that exercised the code.
-The recent-run lookup remains available for local exploration, but should not
-be used as merge evidence.
+The command requires `--run-id` or `GITHUB_RUN_ID` and validates every returned
+profile against both the requested repository and exact run ID. A missing,
+unavailable, or mismatched profile is reported as `unable-to-verify`.
 
 ## Live pull request proof
 
@@ -81,8 +81,8 @@ proof is not a mocked plugin comment. It is the Garnet-owned Check/comment and e
 Execution Profile showing the destination delta for the PR head:
 
 ```text
-main:     node -> example.com
-test PR:  node -> example.org
+main execution chain:     node → example.com:443
+test PR execution chain:  node → example.org:443
 ```
 
 Reviewers can then compare Deepsec's static description of the changed script with

@@ -9,7 +9,7 @@ import { escapeMarkdown, renderRuntimeBlock } from "./render.js";
 export interface GarnetNotifierOptions {
   garnet: GarnetClient;
   repository: string;
-  workflowName?: string;
+  runId: string;
   now?: () => Date;
   github: {
     token: string;
@@ -31,7 +31,7 @@ export function garnetGithubPrNotifier(opts: GarnetNotifierOptions): NotifierPlu
       const correlation = await correlateFindingToRuntime(
         opts.garnet,
         { filePath: record.filePath, lineNumbers: finding.lineNumbers },
-        { repository: opts.repository, workflowName: opts.workflowName },
+        { repository: opts.repository, runId: opts.runId },
       );
       const safePath = record.filePath.replaceAll("`", "'").replace(/\s+/g, " ");
       const body = [

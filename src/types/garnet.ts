@@ -33,6 +33,8 @@ export interface GarnetPeer {
 export interface GarnetProfileEnvelope {
   id: string;
   agentID: string;
+  organization: string;
+  repository: string;
   job: string;
   runID: string;
   createdAt: string;
@@ -90,6 +92,7 @@ export interface GarnetFlow {
   startedAt: string;
   endedAt?: string;
   policyDecision: "allow" | "deny" | "observe";
+  executionChain?: string;
 }
 
 export interface GarnetDetection {
@@ -117,6 +120,7 @@ export interface RuntimeCorrelation {
     addr: string;
     port: number;
     bytesOut: number;
+    executionChain?: string;
   }>;
   detections: GarnetDetection[];
   correlatedRuns: Array<{ runId: string; workflowName: string; startedAt: string }>;

@@ -72,7 +72,6 @@ export function registerCorrelateCommand(
       "JSON file produced by deepsec export --format json --out <file>",
     )
     .requiredOption("--repository <repo>", "GitHub repository in owner/repo form")
-    .option("--workflow <name>", "Query a specific workflow name")
     .option("--run-id <id>", "Query one exact Garnet/GitHub Actions run")
     .option("--agent-id <id>", "Query profiles emitted by one Garnet action instance")
     .option("--step <name>", "Restrict attribution to a named GitHub Actions step")
@@ -80,6 +79,10 @@ export function registerCorrelateCommand(
     .option("--summary <file>", "Summary JSON output")
     .option("--comment-out <file>", "Write a PR-comment-shaped runtime evidence summary")
     .action(async (options) => {
+      const runId = options.runId ?? process.env.GITHUB_RUN_ID;
+      if (!runId) {
+        throw new Error("garnet-correlate requires --run-id or GITHUB_RUN_ID");
+      }
       const input = JSON.parse(await fs.readFile(options.findings!, "utf8")) as unknown;
       if (!Array.isArray(input)) {
         throw new Error("Deepsec JSON export must be an array of findings");
@@ -88,8 +91,7 @@ export function registerCorrelateCommand(
       const client = new GarnetClient({ apiToken: opts.apiToken, baseUrl: opts.baseUrl });
       const result = await correlateExportedFindings(client, input as ExportedFinding[], {
         repository: options.repository!,
-        workflowName: options.workflow,
-        runId: options.runId ?? process.env.GITHUB_RUN_ID,
+        runId,
         agentId: options.agentId ?? process.env.GARNET_AGENT_ID,
         stepName: options.step,
       });
@@ -108,7 +110,7 @@ export function registerCorrelateCommand(
         await fs.mkdir(path.dirname(path.resolve(options.commentOut)), { recursive: true });
         await fs.writeFile(
           options.commentOut,
-          renderCorrelationComment(result.findings, options.runId ?? process.env.GITHUB_RUN_ID),
+          renderCorrelationComment(result.findings, runId),
           "utf8",
         );
       }

@@ -36,16 +36,6 @@ export class GarnetClient {
     return (await res.json()) as T;
   }
 
-  /** List recent runs for a GitHub repo, optionally filtered by workflow. */
-  listRuns(repo: string, opts: { workflowName?: string; limit?: number } = {}) {
-    const q = new URLSearchParams({ repository: repo });
-    if (opts.workflowName) q.set("workflow_name", opts.workflowName);
-    if (opts.limit) q.set("limit", String(opts.limit));
-    return this.get<Array<{ runId: string; workflowName: string; startedAt: string }>>(
-      `/v1/runs?${q}`,
-    );
-  }
-
   /** Fetch the canonical profile envelope for a single workflow run. */
   getProfile(runId: string) {
     return this.get<GarnetProfileEnvelope>(`/api/v1/profiles/${encodeURIComponent(runId)}`);
