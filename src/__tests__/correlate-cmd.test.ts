@@ -73,6 +73,7 @@ describe("registerCorrelateCommand", () => {
       await captured.action!({
         findings: inputFile,
         repository: "garnet-labs/deepsec-plugin",
+        runId: "",
         out: outputFile,
         summary: summaryFile,
         commentOut: commentFile,
