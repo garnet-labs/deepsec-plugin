@@ -116,7 +116,8 @@ describe("correlateFindingToRuntime", () => {
                     {
                       pid: 12,
                       process: "node",
-                      arguments: "node demo/runtime-demo.mjs",
+                      arguments: "node generated-entrypoint.mjs",
+                      github_step: "8. Exercise the reviewed path",
                     },
                   ],
                 },
@@ -129,7 +130,11 @@ describe("correlateFindingToRuntime", () => {
     const result = await correlateFindingToRuntime(
       new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
       { filePath: "demo/runtime-demo.mjs" },
-      { repository: "garnet-labs/deepsec-plugin", runId: "456" },
+      {
+        repository: "garnet-labs/deepsec-plugin",
+        runId: "456",
+        stepName: "Exercise the reviewed path",
+      },
     );
     expect(result.status).toBe("path-observed");
     expect(result.networkDestinations[0]?.domain).toBe("example.com");

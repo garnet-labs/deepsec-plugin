@@ -17,6 +17,7 @@ export interface CorrelateOptions {
   maxRuns?: number;
   runId?: string;
   agentId?: string;
+  stepName?: string;
 }
 
 export async function correlateFindingToRuntime(
@@ -58,15 +59,22 @@ export async function correlateFindingToRuntime(
     for (const profile of exactProfiles) {
       const peers = profile.data?.network?.egress?.peers ?? [];
       for (const peer of peers) {
-        const matchingTrees = (peer.proc_trees ?? []).filter((tree) =>
-          [
+        const matchingTrees = (peer.proc_trees ?? []).filter((tree) => {
+          const pathMatch = [
             tree.executable,
             tree.arguments,
             tree.process,
             ...(tree.ancestry ?? []),
-          ].some((value) => value?.replaceAll("\\", "/").includes(normalizedPath) ||
-            value?.includes(basename)),
-        );
+          ].some(
+            (value) =>
+              value?.replaceAll("\\", "/").includes(normalizedPath) ||
+              value?.includes(basename),
+          );
+          const stepMatch =
+            opts.stepName !== undefined &&
+            tree.github_step?.toLowerCase().includes(opts.stepName.toLowerCase());
+          return pathMatch || stepMatch;
+        });
         if (matchingTrees.length === 0) continue;
         for (const tree of matchingTrees) {
           events.push({
