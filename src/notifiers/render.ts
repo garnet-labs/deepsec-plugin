@@ -51,6 +51,20 @@ export function renderRuntimeBlock(correlation: RuntimeCorrelation): string {
   }
 
   if (correlation.networkDestinations.length > 0) {
+    const executionChains = [
+      ...new Set(
+        correlation.networkDestinations
+          .flatMap((destination) => [
+            ...(destination.executionChains ?? []),
+            destination.executionChain,
+          ])
+          .filter((chain): chain is string => Boolean(chain)),
+      ),
+    ];
+    if (executionChains.length > 0) {
+      lines.push("", "**Execution chains:**");
+      for (const chain of executionChains) lines.push(`- ${inlineCode(chain)}`);
+    }
     lines.push(
       "",
       "**Recorded network destinations:**",

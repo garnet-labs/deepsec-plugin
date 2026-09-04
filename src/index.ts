@@ -30,9 +30,11 @@ export default function garnetPlugin(opts: GarnetPluginOptions = {}): DeepsecPlu
 
   const githubToken = opts.github?.token ?? process.env.GITHUB_TOKEN;
   const pullNumber = opts.github?.pullNumber ?? parsePrNumberFromRef(process.env.GITHUB_REF);
+  const runId = process.env.GITHUB_RUN_ID;
   const [owner, repo, ...extra] = repository?.split("/") ?? [];
   if (
     githubToken &&
+    runId &&
     pullNumber !== null &&
     owner &&
     repo &&
@@ -42,7 +44,7 @@ export default function garnetPlugin(opts: GarnetPluginOptions = {}): DeepsecPlu
       garnetGithubPrNotifier({
         garnet: client,
         repository: `${owner}/${repo}`,
-        workflowName: opts.workflowName,
+        runId,
         github: { token: githubToken, owner, repo, pullNumber },
       }),
     ];

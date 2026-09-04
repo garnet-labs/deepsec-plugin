@@ -28,6 +28,7 @@ describe("registerCorrelateCommand", () => {
     const inputFile = path.join(root, "deepsec-findings.json");
     const outputFile = path.join(root, "correlated.json");
     const summaryFile = path.join(root, "summary.json");
+    const commentFile = path.join(root, "comment.md");
     await fs.writeFile(
       inputFile,
       JSON.stringify([
@@ -46,21 +47,37 @@ describe("registerCorrelateCommand", () => {
       const url = new URL(typeof input === "string" ? input : input.toString());
       const key = url.pathname + url.search;
       const routes: Record<string, unknown> = {
-        "/v1/runs?repository=garnet-labs%2Fdeepsec-plugin&limit=5": [
-          { runId: "123", workflowName: "CI", startedAt: "2026-08-27T00:00:00Z" },
-        ],
-        "/v1/runs/123/events?path=demo%2Fruntime-demo.mjs": [
-          {
-            kind: "process.spawn",
-            ts: "x",
-            pid: 1,
-            ppid: 0,
-            comm: "node",
-            path: "demo/runtime-demo.mjs",
+        "/api/v1/profiles/123": {
+          id: "profile-123",
+          agentID: "agent-123",
+          organization: "garnet-labs",
+          repository: "deepsec-plugin",
+          job: "CI",
+          runID: "123",
+          createdAt: "2026-08-27T00:00:00Z",
+          data: {
+            network: {
+              egress: {
+                peers: [
+                  {
+                    remote_address: "93.184.216.34",
+                    remote_names: ["example.com"],
+                    remote_ports: ["443"],
+                    result: "pass",
+                    proc_trees: [
+                      {
+                        pid: 1,
+                        process: "node",
+                        arguments: "node demo/runtime-demo.mjs",
+                        ancestry: ["/usr/bin/bash"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
           },
-        ],
-        "/v1/runs/123/flows?path=demo%2Fruntime-demo.mjs": [],
-        "/v1/runs/123/detections?path=demo%2Fruntime-demo.mjs": [],
+        },
       };
       const body = routes[key];
       return body === undefined ? new Response("not found", { status: 404 }) : Response.json(body);
@@ -72,8 +89,10 @@ describe("registerCorrelateCommand", () => {
       await captured.action!({
         findings: inputFile,
         repository: "garnet-labs/deepsec-plugin",
+        runId: "123",
         out: outputFile,
         summary: summaryFile,
+        commentOut: commentFile,
       });
     } finally {
       globalThis.fetch = originalFetch;
@@ -81,8 +100,17 @@ describe("registerCorrelateCommand", () => {
 
     const output = JSON.parse(await fs.readFile(outputFile, "utf8"));
     const summary = JSON.parse(await fs.readFile(summaryFile, "utf8"));
+    const comment = await fs.readFile(commentFile, "utf8");
     expect(output[0].metadata.filePath).toBe("demo/runtime-demo.mjs");
     expect(output[0].garnet.status).toBe("path-observed");
+    expect(comment).toContain("Runtime evidence for DeepSec findings");
+    expect(comment).toContain(
+      "Garnet records what the job ran and reached. DeepSec and repository policy keep the verdict.",
+    );
+    expect(comment).toContain("Review outbound destination");
+    expect(comment).toContain(
+      "- `bash → node demo/runtime-demo.mjs → example.com:443`",
+    );
     expect(summary).toEqual({
       total: 1,
       "behavior-observed": 0,
@@ -90,5 +118,24 @@ describe("registerCorrelateCommand", () => {
       "not-observed": 0,
       "unable-to-verify": 0,
     });
+  });
+
+  it("rejects a missing exact run id", async () => {
+    const previousRunId = process.env.GITHUB_RUN_ID;
+    delete process.env.GITHUB_RUN_ID;
+    try {
+      const { program, captured } = captureProgram();
+      registerCorrelateCommand(program, { apiToken: "test" });
+      await expect(
+        captured.action!({
+          findings: "findings.json",
+          repository: "garnet-labs/deepsec-plugin",
+          out: "correlated.json",
+        }),
+      ).rejects.toThrow("garnet-correlate requires --run-id or GITHUB_RUN_ID");
+    } finally {
+      if (previousRunId === undefined) delete process.env.GITHUB_RUN_ID;
+      else process.env.GITHUB_RUN_ID = previousRunId;
+    }
   });
 });
