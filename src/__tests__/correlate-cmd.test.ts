@@ -104,8 +104,13 @@ describe("registerCorrelateCommand", () => {
     expect(output[0].metadata.filePath).toBe("demo/runtime-demo.mjs");
     expect(output[0].garnet.status).toBe("path-observed");
     expect(comment).toContain("Runtime evidence for DeepSec findings");
+    expect(comment).toContain(
+      "Garnet records what the job ran and reached. DeepSec and repository policy keep the verdict.",
+    );
     expect(comment).toContain("Review outbound destination");
-    expect(comment).toContain("bash → node demo/runtime-demo.mjs → example.com:443");
+    expect(comment).toContain(
+      "- `bash → node demo/runtime-demo.mjs → example.com:443`",
+    );
     expect(summary).toEqual({
       total: 1,
       "behavior-observed": 0,

@@ -121,6 +121,7 @@ export interface RuntimeCorrelation {
     port: number;
     bytesOut: number;
     executionChain?: string;
+    executionChains?: string[];
   }>;
   detections: GarnetDetection[];
   correlatedRuns: Array<{ runId: string; workflowName: string; startedAt: string }>;

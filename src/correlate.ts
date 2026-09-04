@@ -140,8 +140,12 @@ export async function correlateFindingToRuntime(
       port: flow.destPort,
       bytesOut: 0,
       executionChain: flow.executionChain,
+      executionChains: [],
     };
     current.bytesOut += flow.bytesOut;
+    if (flow.executionChain && !current.executionChains?.includes(flow.executionChain)) {
+      current.executionChains?.push(flow.executionChain);
+    }
     destinationMap.set(key, current);
   }
 
@@ -204,20 +208,28 @@ function renderExecutionChain(
   port: number,
 ): string | undefined {
   if (!destination) return undefined;
-  const commands = [
-    ...(tree.ancestry ?? []),
-    tree.arguments ?? tree.executable ?? tree.process,
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .map((value) => {
-      const normalized = value.replaceAll("\\", "/").trim();
-      const [executable, ...args] = normalized.split(/\s+/);
-      const basename = executable?.split("/").at(-1);
-      return basename ? [basename, ...args].join(" ") : undefined;
-    })
-    .filter((value): value is string => Boolean(value));
+  const ancestry = tree.ancestry ?? [];
+  const runnerWorkerIndex = ancestry.findIndex(
+    (value) => commandLabel(value)?.basename === "Runner.Worker",
+  );
+  const retainedAncestry =
+    runnerWorkerIndex === -1 ? ancestry : ancestry.slice(runnerWorkerIndex + 1);
+  const commands = retainedAncestry
+    .map(commandLabel)
+    .filter((value): value is { label: string; basename: string } => value !== undefined);
+  const leaf = commandLabel(tree.arguments ?? tree.executable ?? tree.process ?? "");
+  if (leaf?.basename === commands.at(-1)?.basename) commands.pop();
+  if (leaf) commands.push(leaf);
   const suffix = `${destination}:${port}`;
-  return [...commands, suffix].join(" → ");
+  return [...commands.map((command) => command.label), suffix].join(" → ");
+}
+
+function commandLabel(value: string): { label: string; basename: string } | undefined {
+  const normalized = value.replaceAll("\\", "/").trim();
+  if (!normalized) return undefined;
+  const [executable, ...args] = normalized.split(/\s+/);
+  const basename = executable?.split("/").at(-1);
+  return basename ? { basename, label: [basename, ...args].join(" ") } : undefined;
 }
 
 function emptyCorrelation(reasoning: string, limitations: string[]): RuntimeCorrelation {

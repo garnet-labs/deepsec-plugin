@@ -146,8 +146,16 @@ describe("correlateFindingToRuntime", () => {
                     {
                       pid: 12,
                       process: "node",
-                      arguments: "node generated-entrypoint.mjs",
+                      executable: "/opt/hostedtoolcache/node/22.19.0/x64/bin/node",
                       github_step: "8. Exercise the reviewed path",
+                      ancestry: [
+                        "systemd",
+                        "hosted-compute-",
+                        "Runner.Listener",
+                        "Runner.Worker",
+                        "bash",
+                        "node",
+                      ],
                     },
                   ],
                 },
@@ -168,6 +176,9 @@ describe("correlateFindingToRuntime", () => {
     );
     expect(result.status).toBe("path-observed");
     expect(result.networkDestinations[0]?.domain).toBe("example.com");
+    expect(result.networkDestinations[0]?.executionChain).toBe(
+      "bash → node → example.com:443",
+    );
     expect(result.correlatedRuns).toEqual([
       {
         runId: "456",

@@ -126,7 +126,7 @@ function renderCorrelationComment(
     "<!-- garnet-deepsec-correlation -->",
     "## Runtime evidence for DeepSec findings",
     "",
-    "Garnet adds observed execution context. DeepSec and repository policy retain the verdict.",
+    "Garnet records what the job ran and reached. DeepSec and repository policy keep the verdict.",
   ];
   if (runId) lines.push("", `<sub>exact CI run: \`${escapeMarkdown(runId)}\`</sub>`);
 
