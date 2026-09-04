@@ -15,6 +15,7 @@ export interface CorrelateOptions {
   repository: string;
   workflowName?: string;
   maxRuns?: number;
+  runId?: string;
 }
 
 export async function correlateFindingToRuntime(
@@ -22,10 +23,16 @@ export async function correlateFindingToRuntime(
   finding: FindingLike,
   opts: CorrelateOptions,
 ): Promise<RuntimeCorrelation> {
-  const runs = await client.listRuns(opts.repository, {
-    workflowName: opts.workflowName,
-    limit: opts.maxRuns ?? 5,
-  });
+  const runs = opts.runId
+    ? [await client.getProfile(opts.runId)].map((profile) => ({
+        runId: profile.runId,
+        workflowName: profile.workflowName,
+        startedAt: profile.startedAt,
+      }))
+    : await client.listRuns(opts.repository, {
+        workflowName: opts.workflowName,
+        limit: opts.maxRuns ?? 5,
+      });
 
   if (runs.length === 0) {
     return emptyCorrelation(

@@ -56,13 +56,20 @@ npx deepsec export --format json --out .deepsec/findings.json
 npx deepsec garnet-correlate \
   --findings .deepsec/findings.json \
   --repository "$GITHUB_REPOSITORY" \
+  --run-id "$GITHUB_RUN_ID" \
   --workflow "CI" \
+  --comment-out .deepsec/garnet-comment.md \
   --out .deepsec/garnet-correlated.json
 ```
 
 The command writes the enriched finding array and a sibling
 `.summary.json` file. Runtime data remains supporting evidence rather than a
 replacement for Deepsec revalidation or repository policy.
+
+In CI, pass `--run-id "$GITHUB_RUN_ID"` (or rely on the environment variable)
+to bind every observation to the exact workflow run that exercised the code.
+The recent-run lookup remains available for local exploration, but should not
+be used as merge evidence.
 
 ## Live pull request proof
 

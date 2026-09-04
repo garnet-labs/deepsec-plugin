@@ -94,6 +94,48 @@ describe("correlateFindingToRuntime", () => {
     expect(result.captureStatus).toBe("partial");
     expect(result.limitations).toHaveLength(1);
   });
+
+  it("binds correlation to an explicitly requested run", async () => {
+    const routes = {
+      "/v1/runs/456/profile": {
+        agentId: "agent-456",
+        repository: "garnet-labs/deepsec-plugin",
+        runId: "456",
+        jobId: "job-456",
+        workflowName: "DeepSec runtime evidence",
+        startedAt: "2026-09-04T00:00:00Z",
+        endedAt: "2026-09-04T00:01:00Z",
+        events: [],
+        flows: [],
+        detections: [],
+      },
+      "/v1/runs/456/events?path=demo%2Fruntime-demo.mjs": [
+        {
+          kind: "process.spawn",
+          ts: "2026-09-04T00:00:01Z",
+          pid: 12,
+          ppid: 1,
+          comm: "node",
+          path: "demo/runtime-demo.mjs",
+        },
+      ],
+      "/v1/runs/456/flows?path=demo%2Fruntime-demo.mjs": [],
+      "/v1/runs/456/detections?path=demo%2Fruntime-demo.mjs": [],
+    };
+    const result = await correlateFindingToRuntime(
+      new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
+      { filePath: "demo/runtime-demo.mjs" },
+      { repository: "garnet-labs/deepsec-plugin", runId: "456" },
+    );
+    expect(result.status).toBe("path-observed");
+    expect(result.correlatedRuns).toEqual([
+      {
+        runId: "456",
+        workflowName: "DeepSec runtime evidence",
+        startedAt: "2026-09-04T00:00:00Z",
+      },
+    ]);
+  });
 });
 
 function profileRoutes(input: {

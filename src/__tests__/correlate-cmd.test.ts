@@ -28,6 +28,7 @@ describe("registerCorrelateCommand", () => {
     const inputFile = path.join(root, "deepsec-findings.json");
     const outputFile = path.join(root, "correlated.json");
     const summaryFile = path.join(root, "summary.json");
+    const commentFile = path.join(root, "comment.md");
     await fs.writeFile(
       inputFile,
       JSON.stringify([
@@ -74,6 +75,7 @@ describe("registerCorrelateCommand", () => {
         repository: "garnet-labs/deepsec-plugin",
         out: outputFile,
         summary: summaryFile,
+        commentOut: commentFile,
       });
     } finally {
       globalThis.fetch = originalFetch;
@@ -81,8 +83,11 @@ describe("registerCorrelateCommand", () => {
 
     const output = JSON.parse(await fs.readFile(outputFile, "utf8"));
     const summary = JSON.parse(await fs.readFile(summaryFile, "utf8"));
+    const comment = await fs.readFile(commentFile, "utf8");
     expect(output[0].metadata.filePath).toBe("demo/runtime-demo.mjs");
     expect(output[0].garnet.status).toBe("path-observed");
+    expect(comment).toContain("Runtime evidence for DeepSec findings");
+    expect(comment).toContain("Review outbound destination");
     expect(summary).toEqual({
       total: 1,
       "behavior-observed": 0,
