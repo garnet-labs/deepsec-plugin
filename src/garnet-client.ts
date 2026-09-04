@@ -4,6 +4,7 @@
 
 import type {
   GarnetProfile,
+  GarnetProfileEnvelope,
   GarnetProfilePage,
   GarnetEvent,
   GarnetFlow,
@@ -45,9 +46,9 @@ export class GarnetClient {
     );
   }
 
-  /** Fetch the full profile for a single run. */
+  /** Fetch the canonical profile envelope for a single workflow run. */
   getProfile(runId: string) {
-    return this.get<GarnetProfile>(`/v1/runs/${encodeURIComponent(runId)}/profile`);
+    return this.get<GarnetProfileEnvelope>(`/api/v1/profiles/${encodeURIComponent(runId)}`);
   }
 
   /** Fetch canonical profiles for the action-created agent, bound to one workflow run. */

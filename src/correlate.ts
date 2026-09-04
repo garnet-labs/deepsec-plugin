@@ -24,21 +24,16 @@ export async function correlateFindingToRuntime(
   finding: FindingLike,
   opts: CorrelateOptions,
 ): Promise<RuntimeCorrelation> {
-  const exactProfiles =
-    opts.runId && opts.agentId
+  const exactProfiles = opts.runId
+    ? opts.agentId
       ? (await client.getProfilesForAgent(opts.agentId, opts.runId)).items
-      : undefined;
+      : [await client.getProfile(opts.runId)]
+    : undefined;
   const runs = exactProfiles
     ? exactProfiles.map((profile) => ({
         runId: profile.runID,
         workflowName: profile.job,
         startedAt: profile.createdAt,
-      }))
-    : opts.runId
-    ? [await client.getProfile(opts.runId)].map((profile) => ({
-        runId: profile.runId,
-        workflowName: profile.workflowName,
-        startedAt: profile.startedAt,
       }))
     : await client.listRuns(opts.repository, {
         workflowName: opts.workflowName,

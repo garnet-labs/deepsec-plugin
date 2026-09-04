@@ -97,44 +97,39 @@ describe("correlateFindingToRuntime", () => {
 
   it("binds correlation to an explicitly requested run", async () => {
     const routes = {
-      "/api/v1/agents/agent-456/profiles?run_id=456&first=20": {
-        items: [
-          {
-            id: "profile-456",
-            agentID: "agent-456",
-            job: "DeepSec runtime evidence",
-            runID: "456",
-            createdAt: "2026-09-04T00:00:00Z",
-            data: {
-              network: {
-                egress: {
-                  peers: [
+      "/api/v1/profiles/456": {
+        id: "profile-456",
+        agentID: "agent-456",
+        job: "DeepSec runtime evidence",
+        runID: "456",
+        createdAt: "2026-09-04T00:00:00Z",
+        data: {
+          network: {
+            egress: {
+              peers: [
+                {
+                  remote_address: "93.184.216.34",
+                  remote_names: ["example.com"],
+                  remote_ports: ["443"],
+                  result: "pass",
+                  proc_trees: [
                     {
-                      remote_address: "93.184.216.34",
-                      remote_names: ["example.com"],
-                      remote_ports: ["443"],
-                      result: "pass",
-                      proc_trees: [
-                        {
-                          pid: 12,
-                          process: "node",
-                          arguments: "node demo/runtime-demo.mjs",
-                        },
-                      ],
+                      pid: 12,
+                      process: "node",
+                      arguments: "node demo/runtime-demo.mjs",
                     },
                   ],
                 },
-              },
+              ],
             },
           },
-        ],
-        pageInfo: { totalCount: 1, hasNextPage: false, hasPreviousPage: false },
+        },
       },
     };
     const result = await correlateFindingToRuntime(
       new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
       { filePath: "demo/runtime-demo.mjs" },
-      { repository: "garnet-labs/deepsec-plugin", runId: "456", agentId: "agent-456" },
+      { repository: "garnet-labs/deepsec-plugin", runId: "456" },
     );
     expect(result.status).toBe("path-observed");
     expect(result.networkDestinations[0]?.domain).toBe("example.com");
