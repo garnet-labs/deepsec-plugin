@@ -97,37 +97,47 @@ describe("correlateFindingToRuntime", () => {
 
   it("binds correlation to an explicitly requested run", async () => {
     const routes = {
-      "/v1/runs/456/profile": {
-        agentId: "agent-456",
-        repository: "garnet-labs/deepsec-plugin",
-        runId: "456",
-        jobId: "job-456",
-        workflowName: "DeepSec runtime evidence",
-        startedAt: "2026-09-04T00:00:00Z",
-        endedAt: "2026-09-04T00:01:00Z",
-        events: [],
-        flows: [],
-        detections: [],
+      "/api/v1/agents/agent-456/profiles?run_id=456&first=20": {
+        items: [
+          {
+            id: "profile-456",
+            agentID: "agent-456",
+            job: "DeepSec runtime evidence",
+            runID: "456",
+            createdAt: "2026-09-04T00:00:00Z",
+            data: {
+              network: {
+                egress: {
+                  peers: [
+                    {
+                      remote_address: "93.184.216.34",
+                      remote_names: ["example.com"],
+                      remote_ports: ["443"],
+                      result: "pass",
+                      proc_trees: [
+                        {
+                          pid: 12,
+                          process: "node",
+                          arguments: "node demo/runtime-demo.mjs",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+        pageInfo: { totalCount: 1, hasNextPage: false, hasPreviousPage: false },
       },
-      "/v1/runs/456/events?path=demo%2Fruntime-demo.mjs": [
-        {
-          kind: "process.spawn",
-          ts: "2026-09-04T00:00:01Z",
-          pid: 12,
-          ppid: 1,
-          comm: "node",
-          path: "demo/runtime-demo.mjs",
-        },
-      ],
-      "/v1/runs/456/flows?path=demo%2Fruntime-demo.mjs": [],
-      "/v1/runs/456/detections?path=demo%2Fruntime-demo.mjs": [],
     };
     const result = await correlateFindingToRuntime(
       new GarnetClient({ apiToken: "test", fetchImpl: fakeFetch(routes) }),
       { filePath: "demo/runtime-demo.mjs" },
-      { repository: "garnet-labs/deepsec-plugin", runId: "456" },
+      { repository: "garnet-labs/deepsec-plugin", runId: "456", agentId: "agent-456" },
     );
     expect(result.status).toBe("path-observed");
+    expect(result.networkDestinations[0]?.domain).toBe("example.com");
     expect(result.correlatedRuns).toEqual([
       {
         runId: "456",

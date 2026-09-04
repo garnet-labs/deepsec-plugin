@@ -11,6 +11,49 @@ export interface GarnetProfile {
   detections: GarnetDetection[];
 }
 
+export interface GarnetProcessTree {
+  ancestry?: string[];
+  arguments?: string;
+  executable?: string;
+  github_step?: string;
+  pid?: number;
+  process?: string;
+}
+
+export interface GarnetPeer {
+  detections?: string[] | null;
+  proc_trees?: GarnetProcessTree[];
+  protocol?: string;
+  remote_address?: string;
+  remote_names?: string[];
+  remote_ports?: string[];
+  result?: "pass" | "attention" | "fail";
+}
+
+export interface GarnetProfileEnvelope {
+  id: string;
+  agentID: string;
+  job: string;
+  runID: string;
+  createdAt: string;
+  data?: {
+    network?: {
+      egress?: { peers?: GarnetPeer[] };
+      ingress?: { peers?: GarnetPeer[] };
+      local?: { peers?: GarnetPeer[] };
+    };
+  } | null;
+}
+
+export interface GarnetProfilePage {
+  items: GarnetProfileEnvelope[];
+  pageInfo: {
+    totalCount: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export type GarnetEventKind =
   | "syscall.exec"
   | "syscall.openat"

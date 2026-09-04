@@ -74,6 +74,7 @@ export function registerCorrelateCommand(
     .requiredOption("--repository <repo>", "GitHub repository in owner/repo form")
     .option("--workflow <name>", "Query a specific workflow name")
     .option("--run-id <id>", "Query one exact Garnet/GitHub Actions run")
+    .option("--agent-id <id>", "Query profiles emitted by one Garnet action instance")
     .option("--out <file>", "Correlated JSON output", "./.deepsec/garnet-correlated.json")
     .option("--summary <file>", "Summary JSON output")
     .option("--comment-out <file>", "Write a PR-comment-shaped runtime evidence summary")
@@ -88,6 +89,7 @@ export function registerCorrelateCommand(
         repository: options.repository!,
         workflowName: options.workflow,
         runId: options.runId ?? process.env.GITHUB_RUN_ID,
+        agentId: options.agentId ?? process.env.GARNET_AGENT_ID,
       });
       const outFile = options.out!;
       const summaryFile =
