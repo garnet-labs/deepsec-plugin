@@ -17,16 +17,18 @@ export interface GarnetPluginOptions {
 export default function garnetPlugin(opts: GarnetPluginOptions = {}): DeepsecPlugin {
   const apiToken = opts.apiToken ?? process.env.GARNET_API_TOKEN;
   const repository = opts.repository ?? process.env.GITHUB_REPOSITORY;
-  const plugin: DeepsecPlugin = { name: "@garnet-org/deepsec-plugin" };
+  const plugin: DeepsecPlugin = {
+    name: "@garnet-org/deepsec-plugin",
+    commands: (program) =>
+      registerCorrelateCommand(program as Parameters<typeof registerCorrelateCommand>[0], {
+        apiToken,
+        baseUrl: opts.baseUrl,
+      }),
+  };
 
   if (!apiToken) return plugin;
 
   const client = new GarnetClient({ apiToken, baseUrl: opts.baseUrl });
-  plugin.commands = (program) =>
-    registerCorrelateCommand(program as Parameters<typeof registerCorrelateCommand>[0], {
-      apiToken,
-      baseUrl: opts.baseUrl,
-    });
 
   const githubToken = opts.github?.token ?? process.env.GITHUB_TOKEN;
   const pullNumber = opts.github?.pullNumber ?? parsePrNumberFromRef(process.env.GITHUB_REF);

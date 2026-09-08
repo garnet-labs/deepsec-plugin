@@ -23,30 +23,36 @@ Deepsec currently registers notifier plugins but does not invoke them in its com
 path. The typed GitHub notifier adapter and its contract test are retained for that
 future hook; it is not presented as the live demo surface.
 
-## Install
+## Install as a deepsec plugin
+
+The package is a `DeepsecPlugin` from
+[`packages/core/src/plugin.ts`](https://github.com/vercel-labs/deepsec/blob/main/packages/core/src/plugin.ts).
+It fills the `commands` slot: deepsec calls every plugin's `commands` hook at CLI
+startup, so `deepsec garnet-correlate` appears in `deepsec --help` next to the
+built-in subcommands. It also carries a `notifiers` entry for the day deepsec
+invokes notifiers in a command path; nothing else in the plugin depends on it.
 
 ```bash
 npm install --save-dev deepsec @garnet-org/deepsec-plugin
 ```
 
-## Configure
-
 ```ts
+// deepsec.config.ts
 import { defineConfig } from "deepsec/config";
 import garnetPlugin from "@garnet-org/deepsec-plugin";
 
 export default defineConfig({
   projects: [{ id: "my-repo", root: ".." }],
-  plugins: [
-    garnetPlugin({
-      workflowName: "CI",
-    }),
-  ],
+  plugins: [garnetPlugin()],
 });
 ```
 
-The plugin reads `GARNET_API_TOKEN` and `GITHUB_REPOSITORY` from the environment by
-default. Do not expose the Garnet token to untrusted fork pull requests.
+That is the whole install. `garnetPlugin()` takes `apiToken`, `baseUrl`,
+`repository`, and `github` overrides; each falls back to the environment
+(`GARNET_API_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_TOKEN`, `GITHUB_REF`,
+`GITHUB_RUN_ID`, `GITHUB_SHA`). The subcommand registers whether or not a token is
+present, and reads the token when it runs, so `deepsec --help` is identical on a
+laptop and in CI. Do not expose the Garnet token to untrusted fork pull requests.
 `workflowName` remains accepted for configuration compatibility but is unused by
 exact-run correlation.
 
@@ -59,6 +65,7 @@ npx deepsec garnet-correlate \
   --findings .deepsec/findings.json \
   --repository "$GITHUB_REPOSITORY" \
   --run-id "$GITHUB_RUN_ID" \
+  --head-sha "$GITHUB_SHA" \
   --comment-out .deepsec/garnet-comment.md \
   --out .deepsec/garnet-correlated.json
 ```
@@ -66,6 +73,10 @@ npx deepsec garnet-correlate \
 The command writes the enriched finding array and a sibling
 `.summary.json` file. Runtime data remains supporting evidence rather than a
 replacement for Deepsec revalidation or repository policy.
+
+The rendered comment names the exact CI run and the head SHA the evidence is bound
+to (`--head-sha`, default `GITHUB_SHA`), so a reviewer can tell which commit each
+execution chain and destination came from.
 
 The command requires `--run-id` or `GITHUB_RUN_ID` and validates every returned
 profile against both the requested repository and exact run ID. A missing,

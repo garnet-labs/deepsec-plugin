@@ -90,6 +90,7 @@ describe("registerCorrelateCommand", () => {
         findings: inputFile,
         repository: "garnet-labs/deepsec-plugin",
         runId: "123",
+        headSha: "5e982a3404415acc6f6476af14dae653f8967df7",
         out: outputFile,
         summary: summaryFile,
         commentOut: commentFile,
@@ -109,6 +110,9 @@ describe("registerCorrelateCommand", () => {
     );
     expect(comment).toContain("Review outbound destination");
     expect(comment).toContain(
+      "exact CI run: `123` · head SHA: `5e982a3404415acc6f6476af14dae653f8967df7`",
+    );
+    expect(comment).toContain(
       "- `bash → node demo/runtime-demo.mjs → example.com:443`",
     );
     expect(summary).toEqual({
@@ -118,6 +122,26 @@ describe("registerCorrelateCommand", () => {
       "not-observed": 0,
       "unable-to-verify": 0,
     });
+  });
+
+  it("reports a missing Garnet token when the command runs", async () => {
+    const previousToken = process.env.GARNET_API_TOKEN;
+    delete process.env.GARNET_API_TOKEN;
+    try {
+      const { program, captured } = captureProgram();
+      registerCorrelateCommand(program, {});
+      await expect(
+        captured.action!({
+          findings: "findings.json",
+          repository: "garnet-labs/deepsec-plugin",
+          runId: "123",
+          out: "correlated.json",
+        }),
+      ).rejects.toThrow("garnet-correlate requires a Garnet project token");
+    } finally {
+      if (previousToken === undefined) delete process.env.GARNET_API_TOKEN;
+      else process.env.GARNET_API_TOKEN = previousToken;
+    }
   });
 
   it("rejects a missing exact run id", async () => {
