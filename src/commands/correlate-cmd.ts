@@ -62,7 +62,7 @@ export async function correlateExportedFindings(
 
 export function registerCorrelateCommand(
   program: CommanderProgram,
-  opts: { apiToken: string; baseUrl?: string },
+  opts: { apiToken?: string; baseUrl?: string } = {},
 ): void {
   program
     .command("garnet-correlate")
@@ -78,17 +78,25 @@ export function registerCorrelateCommand(
     .option("--out <file>", "Correlated JSON output", "./.deepsec/garnet-correlated.json")
     .option("--summary <file>", "Summary JSON output")
     .option("--comment-out <file>", "Write a PR-comment-shaped runtime evidence summary")
+    .option("--head-sha <sha>", "Head commit the evidence is bound to")
     .action(async (options) => {
+      const apiToken = opts.apiToken ?? process.env.GARNET_API_TOKEN;
+      if (!apiToken) {
+        throw new Error(
+          "garnet-correlate requires a Garnet project token: set GARNET_API_TOKEN or pass apiToken to garnetPlugin()",
+        );
+      }
       const runId = options.runId ?? process.env.GITHUB_RUN_ID;
       if (!runId) {
         throw new Error("garnet-correlate requires --run-id or GITHUB_RUN_ID");
       }
+      const headSha = options.headSha ?? process.env.GITHUB_SHA;
       const input = JSON.parse(await fs.readFile(options.findings!, "utf8")) as unknown;
       if (!Array.isArray(input)) {
         throw new Error("Deepsec JSON export must be an array of findings");
       }
 
-      const client = new GarnetClient({ apiToken: opts.apiToken, baseUrl: opts.baseUrl });
+      const client = new GarnetClient({ apiToken, baseUrl: opts.baseUrl });
       const result = await correlateExportedFindings(client, input as ExportedFinding[], {
         repository: options.repository!,
         runId,
@@ -110,7 +118,7 @@ export function registerCorrelateCommand(
         await fs.mkdir(path.dirname(path.resolve(options.commentOut)), { recursive: true });
         await fs.writeFile(
           options.commentOut,
-          renderCorrelationComment(result.findings, runId),
+          renderCorrelationComment(result.findings, runId, headSha),
           "utf8",
         );
       }
@@ -121,6 +129,7 @@ export function registerCorrelateCommand(
 function renderCorrelationComment(
   findings: Array<ExportedFinding & { garnet: Awaited<ReturnType<typeof correlateFindingToRuntime>> }>,
   runId?: string,
+  headSha?: string,
 ): string {
   const lines = [
     "<!-- garnet-deepsec-correlation -->",
@@ -128,7 +137,11 @@ function renderCorrelationComment(
     "",
     "Garnet records what the job ran and reached. DeepSec and repository policy keep the verdict.",
   ];
-  if (runId) lines.push("", `<sub>exact CI run: \`${escapeMarkdown(runId)}\`</sub>`);
+  if (runId) {
+    const bindings = [`exact CI run: \`${escapeMarkdown(runId)}\``];
+    if (headSha) bindings.push(`head SHA: \`${escapeMarkdown(headSha)}\``);
+    lines.push("", `<sub>${bindings.join(" · ")}</sub>`);
+  }
 
   for (const finding of findings) {
     const title = typeof finding.title === "string" ? finding.title : "DeepSec finding";
