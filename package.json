@@ -29,7 +29,7 @@
     "@types/node": "^22.0.0",
     "deepsec": "^2.3.8",
     "typescript": "^5.7.0",
-    "vitest": "^3.1.0"
+    "vitest": "^4.1.11"
   },
   "keywords": ["deepsec", "deepsec-plugin", "garnet", "runtime-security", "ebpf", "ci-security"]
 }
